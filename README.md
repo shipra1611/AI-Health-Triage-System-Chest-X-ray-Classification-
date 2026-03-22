@@ -97,7 +97,12 @@ To understand the model's predictions, Grad-CAM visualization was used.
 The highlighted regions show where the model focuses when predicting COVID-19 from chest X-rays.
 
 ---
+Results
 
+| Model                | Accuracy | F1 Score | Notes |
+|---------------------|---------|----------|------|
+| DenseNet (baseline) | 87.2%   | 0.85     | supervised only |
+| + SimCLR pretrain   | 91.4%   | 0.89     | better generalization |
 
 ---
 
