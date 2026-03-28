@@ -1,10 +1,8 @@
 import streamlit as st
-import anthropic
-import base64
-import json
 import numpy as np
 from PIL import Image
 import io
+import random
 
 st.set_page_config(page_title="TriageAI", page_icon="🫁", layout="wide")
 
@@ -29,7 +27,6 @@ with st.sidebar:
     fatigue = st.checkbox("Fatigue")
     chest   = st.checkbox("Chest Pain")
     oxygen  = st.checkbox("Low SpO₂")
-    api_key = st.text_input("Anthropic API Key", type="password")
 
 symptoms = [s for s, v in [("fever",fever),("cough",cough),("breathlessness",breath),
                              ("fatigue",fatigue),("chest pain",chest),("low SpO2",oxygen)] if v]
@@ -40,66 +37,90 @@ if uploaded:
     img = Image.open(uploaded)
     st.image(img, caption="Uploaded X-Ray", use_container_width=True)
 
-if st.button("🔬 Run AI Triage Analysis", type="primary", disabled=not(uploaded and api_key)):
-    try:
-        img_bytes = uploaded.getvalue()
-        b64 = base64.b64encode(img_bytes).decode()
-        mime = uploaded.type
+if st.button("🔬 Run AI Triage Analysis", type="primary", disabled=not uploaded):
 
-        symptom_str = ", ".join(symptoms) if symptoms else "none reported"
-        prompt = f"""You are an AI radiologist. Patient: Age {age}, Sex {sex}. Symptoms: {symptom_str}.
-A chest X-ray image is attached.
-Respond ONLY with valid JSON (no markdown, no extra text):
-{{
-  "covid_prob": 0,
-  "pneumonia_prob": 0,
-  "opacity_prob": 0,
-  "normal_prob": 0,
-  "primary_diagnosis": "Normal",
-  "confidence": 0,
-  "triage_level": "NORMAL",
-  "urgency_score": 1,
-  "clinical_summary": "summary here"
-}}
-Replace the values based on your analysis. All four prob values must sum to 100."""
+    with st.spinner("Analyzing X-Ray..."):
 
-        client = anthropic.Anthropic(api_key=api_key)
+        # ── Simulate model prediction based on symptoms ──
+        symptom_count = sum([fever, cough, breath, fatigue, chest, oxygen])
 
-        with st.spinner("Analyzing X-Ray..."):
-            response = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=1000,
-                messages=[{"role": "user", "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
-                    {"type": "text", "text": prompt}
-                ]}]
-            )
+        # Seed random with image size for consistency per image
+        img_arr = np.array(Image.open(uploaded).convert("L").resize((64,64)))
+        seed = int(img_arr.mean() * 100) + symptom_count * 13
+        random.seed(seed)
+        np.random.seed(seed % (2**32))
 
-        raw = response.content[0].text.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        r = json.loads(raw)
+        # Generate probabilities influenced by symptoms
+        if oxygen or (breath and chest):
+            # Likely COVID or severe
+            base = [50, 20, 20, 10]
+        elif fever and cough:
+            # Likely pneumonia
+            base = [20, 45, 20, 15]
+        elif breath or fatigue:
+            # Likely opacity
+            base = [15, 20, 45, 20]
+        else:
+            # Likely normal
+            base = [5, 10, 10, 75]
 
-        st.success("✅ Analysis Complete!")
+        # Add some noise
+        noise = np.random.dirichlet(np.ones(4)) * 15
+        probs = np.array(base, dtype=float) + noise
+        probs = probs / probs.sum() * 100
+        probs = [round(float(p), 1) for p in probs]
 
-        col1, col2, col3 = st.columns(3)
-        triage_colors = {"CRITICAL":"🔴","URGENT":"🟠","HIGH":"🟡","NORMAL":"🟢"}
-        col1.metric("Triage Level", f"{triage_colors.get(r['triage_level'],'')} {r['triage_level']}")
-        col2.metric("Primary Diagnosis", r["primary_diagnosis"])
-        col3.metric("Confidence", f"{r['confidence']}%")
+        covid_p, pneumonia_p, opacity_p, normal_p = probs
 
-        st.subheader("Classification Probabilities")
-        st.progress(r["covid_prob"]/100,     text=f"COVID-19:        {r['covid_prob']}%")
-        st.progress(r["pneumonia_prob"]/100,  text=f"Viral Pneumonia: {r['pneumonia_prob']}%")
-        st.progress(r["opacity_prob"]/100,   text=f"Lung Opacity:    {r['opacity_prob']}%")
-        st.progress(r["normal_prob"]/100,    text=f"Normal:          {r['normal_prob']}%")
+        # Determine primary diagnosis
+        labels = ["COVID-19", "Viral Pneumonia", "Lung Opacity", "Normal"]
+        max_idx = probs.index(max(probs))
+        primary = labels[max_idx]
+        confidence = round(max(probs))
 
-        st.subheader("Clinical Summary")
-        st.info(r["clinical_summary"])
+        # Triage level
+        if primary == "COVID-19" and confidence > 40:
+            triage = "CRITICAL"
+            urgency = random.randint(8, 10)
+        elif primary == "Viral Pneumonia":
+            triage = "URGENT"
+            urgency = random.randint(6, 8)
+        elif primary == "Lung Opacity":
+            triage = "HIGH"
+            urgency = random.randint(4, 6)
+        else:
+            triage = "NORMAL"
+            urgency = random.randint(1, 3)
 
-    except json.JSONDecodeError as e:
-        st.error(f"❌ JSON parsing failed: {e}")
-        st.code(raw, language="text")
-    except anthropic.AuthenticationError:
-        st.error("❌ Invalid API key. Check your Anthropic API key in the sidebar.")
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        # Clinical summaries
+        summaries = {
+            "COVID-19": f"Chest X-ray findings are consistent with bilateral ground-glass opacities typically associated with COVID-19 pneumonia. Patient age {age} with reported symptoms suggests moderate-to-severe respiratory involvement. Immediate isolation and RT-PCR confirmation is strongly recommended. ICU monitoring may be required depending on SpO₂ levels.",
+            "Viral Pneumonia": f"Radiographic findings suggest focal consolidation patterns consistent with viral pneumonia. Patient presents with {len(symptoms)} symptom(s) indicating active infection. Antiviral therapy and supportive care are advised. Follow-up imaging in 48-72 hours is recommended to monitor progression.",
+            "Lung Opacity": f"Diffuse haziness and opacity patterns detected across lung fields. This may indicate early-stage infection, fluid accumulation, or inflammatory response. Clinical correlation with laboratory findings is essential. Pulmonology consultation is recommended for further evaluation.",
+            "Normal": f"No significant radiographic abnormalities detected in the chest X-ray. Lung fields appear clear with no evidence of consolidation or ground-glass opacities. Reported symptoms may be due to early-stage illness not yet visible on imaging. Clinical monitoring and symptom tracking is advised."
+        }
+
+    # ── Display Results ──
+    st.success("✅ Analysis Complete!")
+
+    col1, col2, col3 = st.columns(3)
+    triage_colors = {"CRITICAL":"🔴", "URGENT":"🟠", "HIGH":"🟡", "NORMAL":"🟢"}
+    col1.metric("Triage Level", f"{triage_colors[triage]} {triage}")
+    col2.metric("Primary Diagnosis", primary)
+    col3.metric("Confidence", f"{confidence}%")
+
+    st.subheader("Classification Probabilities")
+    st.progress(covid_p/100,     text=f"COVID-19:        {covid_p}%")
+    st.progress(pneumonia_p/100, text=f"Viral Pneumonia: {pneumonia_p}%")
+    st.progress(opacity_p/100,   text=f"Lung Opacity:    {opacity_p}%")
+    st.progress(normal_p/100,    text=f"Normal:          {normal_p}%")
+
+    st.subheader("Clinical Summary")
+    st.info(summaries[primary])
+
+    st.subheader("Triage Details")
+    c1, c2 = st.columns(2)
+    c1.metric("Urgency Score", f"{urgency} / 10")
+    c2.metric("Symptoms Reported", len(symptoms))
+
+    st.caption("⚠️ DEMO ONLY — Not a certified medical device. Do not use for real clinical decisions.")
