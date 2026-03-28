@@ -1,13 +1,3 @@
-torch
-torchvision
-numpy
-pandas
-matplotlib
-scikit-learn
-opencv-python
-tqdm
-jupyter
-streamlit==1.32.0
-altair==4.2.2
+streamlit==1.38.0
 anthropic
 Pillow
