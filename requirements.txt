@@ -2,3 +2,11 @@ streamlit==1.41.1
 anthropic==0.40.0
 Pillow
 numpy
+streamlit==1.41.1
+tensorflow
+numpy
+pandas
+opencv-python
+Pillow
+matplotlib
+scikit-learn
