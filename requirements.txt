@@ -7,6 +7,7 @@ scikit-learn
 opencv-python
 tqdm
 jupyter
-streamlit
+streamlit==1.32.0
+altair==4.2.2
 anthropic
 Pillow
