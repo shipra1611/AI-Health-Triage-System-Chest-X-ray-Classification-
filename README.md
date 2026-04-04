@@ -10,6 +10,8 @@ The model can classify chest X-rays into:
 - Lung Opacity
 - Normal
 
+Live Demo-https://huggingface.co/spaces/shipr1611/xray-explainer
+
 ---
 
 ## Project Motivation
