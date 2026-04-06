@@ -7,3 +7,6 @@ scikit-learn
 opencv-python
 tqdm
 jupyter
+streamlit
+Pillow
+albumentations
